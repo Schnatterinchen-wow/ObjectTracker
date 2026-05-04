@@ -1,8 +1,10 @@
 --[[
-  ObjectTracker — Turtle WoW 1.12: world object tooltip + keybind → SavedVariables + optional screenshot.
+  ObjectTracker — Turtle WoW 1.12: tooltip snapshot + keybind → SavedVariables + optional screenshot.
 
-  Saves when you mouse over a world object (tooltip owned by WorldFrame, no unit mouseover)
-  and press the bound key (or /ot record).
+  Recording runs only when you press the bound key or /ot record — no automatic saves on hover or tooltip events.
+
+  Capture uses the visible GameTooltip (not a unit mouseover). Avoid pressing record while a UI tooltip is open
+  if you only want world objects; other addons may change GameTooltip's owner away from WorldFrame.
 
   Screenshots use Blizzard TakeScreenshot() if present; UI can be hidden briefly via UIParent alpha.
   Each record stores cursor (raw + scaled by uiScale) + fractions of screenW/H in UI space (origin bottom-left).
@@ -152,11 +154,10 @@ local function collectTooltipLines()
   return lines
 end
 
---- World object tooltip: Blizzard anchors GameTooltip to WorldFrame for 3D interactables without a unit.
+--- Manual record only: whatever is currently shown on GameTooltip (see file header for caveats).
 local function buildCaptureContext()
-  local owner = GameTooltip:GetOwner()
-  if owner ~= WorldFrame then
-    return nil, "Tooltip is not a world-object tooltip (owner must be WorldFrame)."
+  if not GameTooltip or not GameTooltip.IsShown or not GameTooltip:IsShown() then
+    return nil, "GameTooltip is not visible — hover the object or open the tooltip, then record."
   end
   if UnitExists("mouseover") then
     return nil, "Mouseover is a unit — use NPCTracker for NPCs."
@@ -296,7 +297,9 @@ local function slashHandler(msg)
   local m = string.lower(string.gsub(msg or "", "^%s+", ""))
   if m == "" or m == "help" or m == "?" then
     DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffObjectTracker|r commands:")
-    DEFAULT_CHAT_FRAME:AddMessage("  |cffdddddd/ot rec|r or |cffdddddd/ot record|r — save tooltip + coords + screenshot (world object under cursor).")
+    DEFAULT_CHAT_FRAME:AddMessage(
+      "  |cffdddddd/ot rec|r or |cffdddddd/ot record|r — save visible GameTooltip + coords + screenshot (manual only; no auto-save)."
+    )
     DEFAULT_CHAT_FRAME:AddMessage("  |cffdddddd/ot ui|r — toggle hide-all-UI for screenshots (UIParent alpha).")
     DEFAULT_CHAT_FRAME:AddMessage(
       "  Bind a key: Escape → Key Bindings → AddOns → ObjectTracker — same idea as NPCTracker |cffddddddrecord|r."
