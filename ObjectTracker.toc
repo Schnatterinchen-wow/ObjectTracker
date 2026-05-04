@@ -1,0 +1,10 @@
+## Interface: 11200
+## Title: ObjectTracker |cffcccccc[TurtleWoW]|r
+## Notes: World-object tooltip + keybind → SavedVariables; optional screenshot (TakeScreenshot). /ot record, /ot help
+## Version: 0.2.1
+## SavedVariables: ObjectTrackerDB
+
+zones_registry.lua
+dungeons_registry.lua
+ObjectTracker.lua
+Bindings.xml
