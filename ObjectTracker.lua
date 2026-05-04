@@ -6,8 +6,8 @@
   Capture uses the visible GameTooltip (not a unit mouseover). Avoid pressing record while a UI tooltip is open
   if you only want world objects; other addons may change GameTooltip's owner away from WorldFrame.
 
-  Screenshots use Blizzard TakeScreenshot() if present; UI can be hidden briefly via UIParent alpha.
-  Each record stores cursor (raw + scaled by uiScale) + fractions of screenW/H in UI space (origin bottom-left).
+  Screenshots use Blizzard TakeScreenshot() if present (UI is not hidden — avoids breaking other addons).
+  Each record stores cursor (raw + scaled by uiScale) + fractions of screenW/H in UI space (origin bottom-left), 2 decimal places.
 
   screenshots[] entries: { stamp, sessionT, cursorX, cursorY, cursorScaledX, cursorScaledY,
     cursorFracX, cursorFracY, screenW, screenH, uiScale }. Fracs omit if screen size is 0.
@@ -15,11 +15,7 @@
 
 ObjectTrackerDB = ObjectTrackerDB or {}
 ObjectTrackerDB.objects = ObjectTrackerDB.objects or {}
-if ObjectTrackerDB.hideUIForScreenshot == nil then
-  ObjectTrackerDB.hideUIForScreenshot = true
-end
 
-local screenshotRestoreAlpha = nil
 local shotSafety
 
 local function round2(n)
@@ -90,7 +86,7 @@ local function normalizeObjectName(name)
 end
 
 local function objectStorageKey(zone, x, y, name)
-  return string.format("%s_%.1f_%.1f_%s", zone, x, y, name)
+  return string.format("%s_%.2f_%.2f_%s", zone, x, y, name)
 end
 
 local function timestampTag()
@@ -122,17 +118,17 @@ local function pointerViewportSnapshot()
   local sy = cy / scale
   local rec = {
     sessionT = round2(GetTime()),
-    cursorX = cx,
-    cursorY = cy,
-    cursorScaledX = sx,
-    cursorScaledY = sy,
-    screenW = sw,
-    screenH = sh,
-    uiScale = scale,
+    cursorX = round2(cx),
+    cursorY = round2(cy),
+    cursorScaledX = round2(sx),
+    cursorScaledY = round2(sy),
+    screenW = round2(sw),
+    screenH = round2(sh),
+    uiScale = round2(scale),
   }
   if sw > 0 and sh > 0 then
-    rec.cursorFracX = sx / sw
-    rec.cursorFracY = sy / sh
+    rec.cursorFracX = round2(sx / sw)
+    rec.cursorFracY = round2(sy / sh)
   end
   return rec
 end
@@ -227,28 +223,21 @@ local function persistCapture(ctx)
   })
   rec.lastCapture = ctx.stamp
   rec.tooltipLinesLast = ctx.lines
-  rec.pointerLast = p
   return key
 end
 
 shotSafety = CreateFrame("Frame")
 
-local function restoreUIAfterShot()
-  if screenshotRestoreAlpha then
-    UIParent:SetAlpha(screenshotRestoreAlpha)
-    screenshotRestoreAlpha = nil
-  end
+local function clearShotSafetyTimer()
   shotSafety:SetScript("OnUpdate", nil)
 end
 
---- Fallback if client never fires screenshot events (should be rare).
+--- Fallback if client never fires screenshot events (should be rare). Uses GetTime — some 1.12 builds pass nil as OnUpdate elapsed.
 local function armScreenshotSafetyTimer()
-  local t = 0
-  shotSafety:SetScript("OnUpdate", function(self, elapsed)
-    t = t + elapsed
-    if t >= 2.5 then
-      restoreUIAfterShot()
-      self:SetScript("OnUpdate", nil)
+  local deadline = GetTime() + 2.5
+  shotSafety:SetScript("OnUpdate", function()
+    if GetTime() >= deadline then
+      clearShotSafetyTimer()
     end
   end)
 end
@@ -260,13 +249,9 @@ local function takeScreenshotIfPossible()
     )
     return
   end
-  if ObjectTrackerDB.hideUIForScreenshot then
-    screenshotRestoreAlpha = UIParent:GetAlpha()
-    UIParent:SetAlpha(0)
-  end
   local ok, err = pcall(TakeScreenshot)
   if not ok then
-    restoreUIAfterShot()
+    clearShotSafetyTimer()
     DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffObjectTracker|r: TakeScreenshot error: " .. tostring(err))
     return
   end
@@ -277,7 +262,7 @@ local shotEvents = CreateFrame("Frame")
 shotEvents:RegisterEvent("SCREENSHOT_SUCCEEDED")
 shotEvents:RegisterEvent("SCREENSHOT_FAILED")
 shotEvents:SetScript("OnEvent", function()
-  restoreUIAfterShot()
+  clearShotSafetyTimer()
 end)
 
 function ObjectTracker_RunCaptureBinding()
@@ -300,7 +285,6 @@ local function slashHandler(msg)
     DEFAULT_CHAT_FRAME:AddMessage(
       "  |cffdddddd/ot rec|r or |cffdddddd/ot record|r — save visible GameTooltip + coords + screenshot (manual only; no auto-save)."
     )
-    DEFAULT_CHAT_FRAME:AddMessage("  |cffdddddd/ot ui|r — toggle hide-all-UI for screenshots (UIParent alpha).")
     DEFAULT_CHAT_FRAME:AddMessage(
       "  Bind a key: Escape → Key Bindings → AddOns → ObjectTracker — same idea as NPCTracker |cffddddddrecord|r."
     )
@@ -317,14 +301,6 @@ local function slashHandler(msg)
   end
   if m == "rec" or m == "record" then
     ObjectTracker_RunCaptureBinding()
-    return
-  end
-  if m == "ui" then
-    ObjectTrackerDB.hideUIForScreenshot = not ObjectTrackerDB.hideUIForScreenshot
-    DEFAULT_CHAT_FRAME:AddMessage(
-      "|cff99ccffObjectTracker|r hide UI for screenshot: "
-        .. (ObjectTrackerDB.hideUIForScreenshot and "|cff00ff00ON|r" or "|cffff5555OFF|r")
-    )
     return
   end
   DEFAULT_CHAT_FRAME:AddMessage("|cff99ccffObjectTracker|r: unknown — |cffdddddd/ot help|r")
